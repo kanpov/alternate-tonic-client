@@ -8,19 +8,18 @@ use tower::Service;
 
 use crate::stream::GrpcStream;
 
-#[cfg(feature = "custom-transport")]
-pub type CustomGrpcConnector = tower::util::BoxCloneSyncService<
-    (),
-    Box<dyn crate::stream::CustomGrpcStream>,
-    Box<dyn std::error::Error + Send + Sync>,
->;
-
 #[derive(Clone)]
 pub enum GrpcConnector {
     #[cfg(feature = "unix-transport")]
     Unix(std::sync::Arc<std::path::PathBuf>),
     #[cfg(feature = "custom-transport")]
-    Custom(CustomGrpcConnector),
+    Custom(
+        tower::util::BoxCloneSyncService<
+            (),
+            Box<dyn crate::stream::CustomGrpcStream>,
+            Box<dyn std::error::Error + Send + Sync>,
+        >,
+    ),
 }
 
 impl Service<Uri> for GrpcConnector {

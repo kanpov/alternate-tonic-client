@@ -1,21 +1,38 @@
 use std::{
     pin::Pin,
     task::{Context, Poll},
+    time::Duration,
 };
 
-use http::{Request, Response};
+use http::{Request, Response, Uri};
 use hyper::body::Incoming;
 use hyper_util::{client::legacy::Client, rt::TokioExecutor};
 use tonic::body::Body;
-use tower::{Service, ServiceExt, util::BoxCloneSyncService};
+use tower::{Service, ServiceExt, timeout::Timeout, util::BoxCloneSyncService};
 
 use crate::connector::GrpcConnector;
 
-pub struct GrpcChannelBuilder {}
+pub struct GrpcChannelBuilder {
+    connection_timeout: Option<Duration>,
+    request_timeout: Option<Duration>,
+}
 
 impl GrpcChannelBuilder {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            connection_timeout: None,
+            request_timeout: None,
+        }
+    }
+
+    pub fn connection_timeout(mut self, timeout: Duration) -> Self {
+        self.connection_timeout = Some(timeout);
+        self
+    }
+
+    pub fn request_timeout(mut self, timeout: Duration) -> Self {
+        self.request_timeout = Some(timeout);
+        self
     }
 
     #[cfg(feature = "unix-transport")]
@@ -52,13 +69,40 @@ impl GrpcChannelBuilder {
     }
 
     fn build(self, connector: GrpcConnector) -> GrpcChannel {
-        let client = Client::builder(TokioExecutor::new())
-            .build::<_, Body>(connector)
+        let connector = match self.connection_timeout {
+            Some(timeout) => BoxCloneSyncService::new(Timeout::new(connector, timeout)),
+            None => BoxCloneSyncService::new(connector),
+        };
+
+        let mut client_builder = Client::builder(TokioExecutor::new());
+        client_builder.http2_only(true);
+
+        let client = client_builder
+            .build(connector)
+            .map_request(|mut request: Request<Body>| {
+                *request.uri_mut() = Uri::builder()
+                    .scheme("http")
+                    .authority("localhost")
+                    .path_and_query(
+                        request
+                            .uri()
+                            .path_and_query()
+                            .expect("No path and query were specified for a gRPC request")
+                            .clone(),
+                    )
+                    .build()
+                    .expect("Uri builder failed");
+
+                request
+            })
             .map_err(|err| Box::new(err) as Box<dyn std::error::Error + Send + Sync>);
 
-        GrpcChannel {
-            inner: BoxCloneSyncService::new(client),
-        }
+        let client = match self.request_timeout {
+            Some(timeout) => BoxCloneSyncService::new(Timeout::new(client, timeout)),
+            None => BoxCloneSyncService::new(client),
+        };
+
+        GrpcChannel { inner: client }
     }
 }
 
