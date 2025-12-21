@@ -15,7 +15,7 @@ pub struct GrpcConnector {
 }
 
 impl GrpcConnector {
-    #[cfg(feature = "unix-connector")]
+    #[cfg(feature = "unix-transport")]
     pub fn to_unix_socket<P: Into<std::path::PathBuf>>(socket_path: P) -> GrpcConnector {
         let socket_path = std::sync::Arc::new(socket_path.into());
 
@@ -64,7 +64,7 @@ impl GrpcConnector {
         }
     }
 
-    #[cfg(feature = "_connector")]
+    #[cfg(feature = "_transport")]
     fn new<
         F: Send + Sync + Clone + 'static + Fn(Uri) -> Fut,
         Fut: Send + 'static + Future<Output = Result<GrpcStream, Box<dyn std::error::Error + Send + Sync + 'static>>>,

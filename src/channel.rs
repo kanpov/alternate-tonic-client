@@ -11,32 +11,37 @@ use tower::{Service, ServiceExt, util::BoxCloneSyncService};
 
 use crate::connector::GrpcConnector;
 
+pub struct GrpcConnectionPoolOptions {}
+
 #[derive(Debug, Clone)]
 pub struct GrpcChannel {
     inner: BoxCloneSyncService<Request<Body>, Response<Incoming>, Box<dyn std::error::Error + Send + Sync>>,
 }
 
 impl GrpcChannel {
-    pub fn new(connector: GrpcConnector) -> Self {
+    #[cfg(feature = "singleton-channel")]
+    pub async fn singleton(mut connector: GrpcConnector) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let connector = connector.ready().await?;
+        let stream = connector.call(Uri::from_static("http://localhost")).await?;
+        let (send_request, connection) =
+            hyper::client::conn::http2::handshake::<_, _, Body>(TokioExecutor::new(), stream).await?;
+
+        tokio::task::spawn(connection);
+
+        Ok(Self {
+            inner: BoxCloneSyncService::new(crate::util::SendRequestService { send_request }),
+        })
+    }
+
+    #[cfg(feature = "pooled-channel")]
+    pub fn pooled(connector: GrpcConnector) -> Self {
         let mut client_builder = Client::builder(TokioExecutor::new());
         client_builder.http2_only(true);
 
         let client = client_builder
             .build(connector)
             .map_request(|mut request: Request<Body>| {
-                *request.uri_mut() = Uri::builder()
-                    .scheme("http")
-                    .authority("localhost")
-                    .path_and_query(
-                        request
-                            .uri()
-                            .path_and_query()
-                            .expect("No path and query were specified for a gRPC request")
-                            .clone(),
-                    )
-                    .build()
-                    .expect("Uri builder failed");
-
+                crate::util::set_request_uri_scheme_and_authority(&mut request);
                 request
             })
             .map_err(|err| Box::new(err) as Box<dyn std::error::Error + Send + Sync>);
