@@ -1,11 +1,10 @@
 use std::{
     pin::Pin,
     task::{Context, Poll},
-    time::Duration,
 };
 
 use http::Uri;
-use tower::{Layer, Service, timeout::TimeoutLayer, util::BoxCloneSyncService};
+use tower::{Layer, Service, util::BoxCloneSyncService};
 
 use crate::stream::GrpcStream;
 
@@ -27,10 +26,6 @@ impl GrpcConnector {
                 Ok(GrpcStream::unix(stream))
             }
         })
-    }
-
-    pub fn timeout(self, timeout: Duration) -> Self {
-        self.layer(TimeoutLayer::new(timeout))
     }
 
     pub fn layer<L>(self, layer: L) -> Self

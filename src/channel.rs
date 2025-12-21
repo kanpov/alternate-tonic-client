@@ -3,7 +3,7 @@ use std::{
     task::{Context, Poll},
 };
 
-use http::{Request, Response, Uri};
+use http::{Request, Response};
 use hyper::body::Incoming;
 use hyper_util::{client::legacy::Client, rt::TokioExecutor};
 use tonic::body::Body;
@@ -11,26 +11,22 @@ use tower::{Service, ServiceExt, util::BoxCloneSyncService};
 
 use crate::connector::GrpcConnector;
 
-pub struct GrpcConnectionPoolOptions {}
-
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct GrpcChannel {
     inner: BoxCloneSyncService<Request<Body>, Response<Incoming>, Box<dyn std::error::Error + Send + Sync>>,
 }
 
 impl GrpcChannel {
     #[cfg(feature = "singleton-channel")]
-    pub async fn singleton(mut connector: GrpcConnector) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        let connector = connector.ready().await?;
-        let stream = connector.call(Uri::from_static("http://localhost")).await?;
-        let (send_request, connection) =
-            hyper::client::conn::http2::handshake::<_, _, Body>(TokioExecutor::new(), stream).await?;
+    pub fn singleton(connector: GrpcConnector, buffer_size: usize) -> Self {
+        let buffer = tower::buffer::Buffer::new(
+            tower::reconnect::Reconnect::new(crate::util::SingletonConnectService::new(connector), ()),
+            buffer_size,
+        );
 
-        tokio::task::spawn(connection);
-
-        Ok(Self {
-            inner: BoxCloneSyncService::new(crate::util::SendRequestService { send_request }),
-        })
+        Self {
+            inner: BoxCloneSyncService::new(buffer),
+        }
     }
 
     #[cfg(feature = "pooled-channel")]
@@ -38,7 +34,7 @@ impl GrpcChannel {
         let mut client_builder = Client::builder(TokioExecutor::new());
         client_builder.http2_only(true);
 
-        let client = client_builder
+        let service = client_builder
             .build(connector)
             .map_request(|mut request: Request<Body>| {
                 crate::util::set_request_uri_scheme_and_authority(&mut request);
@@ -47,7 +43,7 @@ impl GrpcChannel {
             .map_err(|err| Box::new(err) as Box<dyn std::error::Error + Send + Sync>);
 
         GrpcChannel {
-            inner: BoxCloneSyncService::new(client),
+            inner: BoxCloneSyncService::new(service),
         }
     }
 }
