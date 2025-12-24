@@ -24,6 +24,25 @@ impl GrpcConnectorBuilder {
         self
     }
 
+    #[cfg(feature = "dns-tcp-tls-transport")]
+    pub fn build_to_tcp_host_with_tls(
+        self,
+        uri: Uri,
+        tls_config: rustls::ClientConfig,
+        enforce_tls: bool,
+    ) -> GrpcConnector {
+        let connector = hyper_rustls::HttpsConnectorBuilder::new().with_tls_config(tls_config);
+
+        let connector = match enforce_tls {
+            true => connector.https_only(),
+            false => connector.https_or_http(),
+        }
+        .enable_http2()
+        .build();
+
+        self.build(GrpcConnectorInner::DnsTcpTls(uri, connector))
+    }
+
     #[cfg(feature = "unix-transport")]
     pub fn build_to_unix_socket<P: Into<std::path::PathBuf>>(self, socket_path: P) -> GrpcConnector {
         self.build(GrpcConnectorInner::Unix(std::sync::Arc::new(socket_path.into())))
@@ -63,6 +82,11 @@ pub struct GrpcConnector {
 
 #[derive(Debug, Clone)]
 enum GrpcConnectorInner {
+    #[cfg(feature = "dns-tcp-tls-transport")]
+    DnsTcpTls(
+        Uri,
+        hyper_rustls::HttpsConnector<hyper_util::client::legacy::connect::HttpConnector>,
+    ),
     #[cfg(feature = "unix-transport")]
     Unix(std::sync::Arc<std::path::PathBuf>),
     #[cfg(feature = "vsock-transport")]
@@ -83,6 +107,8 @@ impl Service<Uri> for GrpcConnector {
         #[cfg_attr(not(feature = "custom-transport"), allow(unused))] cx: &mut Context<'_>,
     ) -> Poll<Result<(), Self::Error>> {
         match self.inner {
+            #[cfg(feature = "dns-tcp-tls-transport")]
+            GrpcConnectorInner::DnsTcpTls(_, ref mut connector) => connector.poll_ready(cx),
             #[cfg(feature = "unix-transport")]
             GrpcConnectorInner::Unix(_) => Poll::Ready(Ok(())),
             #[cfg(feature = "vsock-transport")]
@@ -99,6 +125,15 @@ impl Service<Uri> for GrpcConnector {
         #[cfg(feature = "_transport")]
         {
             let future = match self.inner {
+                #[cfg(feature = "dns-tcp-tls-transport")]
+                GrpcConnectorInner::DnsTcpTls(ref uri, ref mut connector) => {
+                    let future = connector.call(uri.clone());
+
+                    Box::pin(async move {
+                        let stream = future.await?;
+                        Ok(GrpcStream::dns_tcp_tls(stream))
+                    })
+                }
                 #[cfg(feature = "unix-transport")]
                 GrpcConnectorInner::Unix(ref socket_path) => {
                     let socket_path = socket_path.clone();
@@ -106,7 +141,7 @@ impl Service<Uri> for GrpcConnector {
                     Box::pin(async move {
                         let stream = tokio::net::UnixStream::connect(socket_path.as_ref()).await?;
                         Ok(GrpcStream::unix(stream))
-                    })
+                    }) as BoxResultFuture<GrpcStream>
                 }
                 #[cfg(feature = "vsock-transport")]
                 GrpcConnectorInner::Vsock(cid, port) => Box::pin(async move {

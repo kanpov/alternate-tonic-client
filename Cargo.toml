@@ -12,6 +12,13 @@ hyper-util = { version = "0.1.19", optional = true }
 tokio = { version = "1.48.0", features = ["time"] }
 tonic = { version = "0.14.2", default-features = false }
 
+rustls = { version = "0.23.35", optional = true, default-features = false, features = [
+    "prefer-post-quantum",
+    "std",
+] }
+hyper-rustls = { version = "0.27.7", optional = true, default-features = false, features = [
+    "http2",
+] }
 tokio-vsock = { version = "0.7.2", optional = true }
 
 [dev-dependencies]
@@ -19,16 +26,27 @@ prost = "0.14.1"
 tonic-prost = "0.14.2"
 tokio = { version = "1.48.0", features = ["macros"] }
 alternate-tonic-client = { path = ".", features = [
+    "dns-tcp-tls-transport",
     "unix-transport",
     "vsock-transport",
     "custom-transport",
     "singleton-channel",
     "pooled-channel",
 ] }
+rustls = { version = "0.23.35", features = ["aws-lc-rs"] }
+webpki-roots = "1.0.4"
 
 [features]
 default = []
 _transport = []
+dns-tcp-tls-transport = [
+    "_transport",
+    "dep:rustls",
+    "dep:hyper-rustls",
+    "hyper-util/client",
+    "hyper-util/client-legacy",
+    "hyper-util/tokio",
+]
 unix-transport = ["_transport", "tokio/net", "hyper-util/tokio"]
 vsock-transport = ["_transport", "dep:tokio-vsock", "hyper-util/tokio"]
 custom-transport = ["_transport", "hyper-util/tokio"]

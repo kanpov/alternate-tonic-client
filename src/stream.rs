@@ -19,6 +19,8 @@ pub struct GrpcStream {
 }
 
 enum GrpcStreamInner {
+    #[cfg(feature = "dns-tcp-tls-transport")]
+    DnsTcpTls(hyper_rustls::MaybeHttpsStream<hyper_util::rt::TokioIo<tokio::net::TcpStream>>),
     #[cfg(feature = "unix-transport")]
     Unix(hyper_util::rt::tokio::WithHyperIo<tokio::net::UnixStream>),
     #[cfg(feature = "vsock-transport")]
@@ -38,6 +40,14 @@ impl GrpcStream {
     #[cfg(feature = "custom-transport")]
     pub fn wrap_tokio_io<IO: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static>(io: IO) -> Self {
         Self::wrap_hyper_io(hyper_util::rt::tokio::WithHyperIo::new(io))
+    }
+
+    pub(crate) fn dns_tcp_tls(
+        stream: hyper_rustls::MaybeHttpsStream<hyper_util::rt::TokioIo<tokio::net::TcpStream>>,
+    ) -> Self {
+        Self {
+            inner: GrpcStreamInner::DnsTcpTls(stream),
+        }
     }
 
     #[cfg(feature = "unix-transport")]
@@ -66,6 +76,8 @@ impl Read for GrpcStream {
 
         #[cfg(feature = "_transport")]
         match &mut self.get_mut().inner {
+            #[cfg(feature = "dns-tcp-tls-transport")]
+            GrpcStreamInner::DnsTcpTls(stream) => Pin::new(stream).poll_read(cx, buf),
             #[cfg(feature = "unix-transport")]
             GrpcStreamInner::Unix(stream) => Pin::new(stream).poll_read(cx, buf),
             #[cfg(feature = "vsock-transport")]
@@ -87,6 +99,8 @@ impl Write for GrpcStream {
 
         #[cfg(feature = "_transport")]
         match &mut self.get_mut().inner {
+            #[cfg(feature = "dns-tcp-tls-transport")]
+            GrpcStreamInner::DnsTcpTls(stream) => Pin::new(stream).poll_write(cx, buf),
             #[cfg(feature = "unix-transport")]
             GrpcStreamInner::Unix(stream) => Pin::new(stream).poll_write(cx, buf),
             #[cfg(feature = "vsock-transport")]
@@ -105,6 +119,8 @@ impl Write for GrpcStream {
 
         #[cfg(feature = "_transport")]
         match &mut self.get_mut().inner {
+            #[cfg(feature = "dns-tcp-tls-transport")]
+            GrpcStreamInner::DnsTcpTls(stream) => Pin::new(stream).poll_flush(cx),
             #[cfg(feature = "unix-transport")]
             GrpcStreamInner::Unix(stream) => Pin::new(stream).poll_flush(cx),
             #[cfg(feature = "vsock-transport")]
@@ -123,6 +139,8 @@ impl Write for GrpcStream {
 
         #[cfg(feature = "_transport")]
         match &mut self.get_mut().inner {
+            #[cfg(feature = "dns-tcp-tls-transport")]
+            GrpcStreamInner::DnsTcpTls(stream) => Pin::new(stream).poll_shutdown(cx),
             #[cfg(feature = "unix-transport")]
             GrpcStreamInner::Unix(stream) => Pin::new(stream).poll_shutdown(cx),
             #[cfg(feature = "vsock-transport")]
