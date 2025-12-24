@@ -7,7 +7,7 @@ use std::pin::Pin;
 
 #[cfg(feature = "_channel")]
 pub use channel::*;
-pub use connector::{GrpcConnector, GrpcConnectorBuilder};
+pub use connector::*;
 pub use stream::GrpcStream;
 
 type BoxResultFuture<O> =
