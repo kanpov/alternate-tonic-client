@@ -2,7 +2,17 @@
 name = "alternate-tonic-client"
 version = "0.1.0"
 edition = "2024"
+description = "An alternative gRPC client stack meant to be a replacement for tonic's built-in Channel."
+license = "MIT"
+keywords = ["grpc", "tonic", "client", "channel", "transport"]
+categories = ["network-programming", "web-programming"]
+repository = "https://github.com/kanpov/alternate-tonic-client"
+exclude = [".gitignore", ".rustfmt.toml"]
 rust-version = "1.85.0"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
 http = "1.4.0"
