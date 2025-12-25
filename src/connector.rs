@@ -4,7 +4,9 @@ use std::{
 };
 
 use http::Uri;
-use tower::{BoxError, Service, ServiceExt};
+#[cfg(feature = "custom-transport")]
+use tower::ServiceExt;
+use tower::{BoxError, Service};
 
 use crate::{BoxResultFuture, stream::GrpcStream};
 
