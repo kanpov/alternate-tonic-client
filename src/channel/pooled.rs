@@ -7,7 +7,7 @@ use http::{Request, Response};
 use hyper::body::Incoming;
 use hyper_util::{
     client::legacy::{Builder, Client},
-    rt::TokioExecutor,
+    rt::{TokioExecutor, TokioTimer},
 };
 use tonic::body::Body;
 use tower::{BoxError, Service};
@@ -103,7 +103,11 @@ impl PooledGrpcChannelBuilder {
 
     /// Build a [PooledGrpcChannel] backed by the given [GrpcConnector].
     pub fn build(mut self, connector: GrpcConnector) -> PooledGrpcChannel {
-        self.client_builder.http2_only(true);
+        self.client_builder
+            .http2_only(true)
+            .timer(TokioTimer::new())
+            .pool_timer(TokioTimer::new());
+
         let client = self.client_builder.build(connector);
 
         PooledGrpcChannel {

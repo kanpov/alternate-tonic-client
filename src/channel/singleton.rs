@@ -6,7 +6,7 @@ use std::{
 
 use http::{Request, Response};
 use hyper::body::Incoming;
-use hyper_util::rt::TokioExecutor;
+use hyper_util::rt::{TokioExecutor, TokioTimer};
 use tonic::body::Body;
 use tower::{
     BoxError, Service, ServiceBuilder, buffer::Buffer, reconnect::Reconnect, timeout::TimeoutLayer,
@@ -118,7 +118,9 @@ impl SingletonGrpcChannelBuilder {
         self
     }
 
-    pub fn build(self, connector: GrpcConnector) -> SingletonGrpcChannel {
+    pub fn build(mut self, connector: GrpcConnector) -> SingletonGrpcChannel {
+        self.connection_builder.timer(TokioTimer::new());
+
         let service = ServiceBuilder::new()
             .option_layer(self.timeout.map(TimeoutLayer::new))
             .service(Reconnect::new(

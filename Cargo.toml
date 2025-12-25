@@ -1,6 +1,6 @@
 [package]
 name = "alternate-tonic-client"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 description = "An alternative gRPC client stack meant to be a replacement for tonic's built-in Channel."
 license = "MIT"
