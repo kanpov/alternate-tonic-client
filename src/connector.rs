@@ -284,19 +284,20 @@ impl Service<Uri> for GrpcConnector {
 }
 
 #[cfg(feature = "firecracker-handshake")]
-async fn perform_firecracker_handshake<IO: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send>(
+async fn perform_firecracker_handshake<S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin>(
     port: Option<u32>,
-    io: &mut IO,
+    stream: &mut S,
 ) -> Result<(), std::io::Error> {
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+    const BUFFER_CAPACITY: usize = 14;
 
     let Some(port) = port else {
         return Ok(());
     };
 
-    io.write_all(format!("CONNECT {port}\n").as_bytes()).await?;
+    stream.write_all(format!("CONNECT {port}\n").as_bytes()).await?;
 
-    let mut lines = BufReader::new(io).lines();
+    let mut lines = BufReader::with_capacity(BUFFER_CAPACITY, stream).lines();
     match lines.next_line().await {
         Ok(Some(line)) => {
             if !line.starts_with("OK") {
